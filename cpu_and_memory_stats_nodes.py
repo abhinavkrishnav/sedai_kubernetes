@@ -1,45 +1,45 @@
 import requests
-import json
+import numpy as np
 
-PROMETHEUS_URL = "http://34.66.104.228:80/api/v1/query"
+PROMETHEUS_URL = "http://34.66.104.228:80/api/v1/query"  # Replace with actual host
 
+# Fetch data from Prometheus
 def fetch_metric(query):
     response = requests.get(PROMETHEUS_URL, params={'query': query})
     if response.status_code == 200:
         result = response.json()
-        return result['data']['result']
+        return [float(metric['value'][1]) for metric in result['data']['result']]
     else:
         print(f"Error fetching data: {response.status_code}")
-        return None
+        return []
 
-cpu_query = 'rate(node_cpu_seconds_total[5m])'
-memory_total_query = 'node_memory_MemTotal_bytes'
-memory_available_query = 'node_memory_MemAvailable_bytes'
+# Helper function to calculate statistics
+def calculate_stats(data):
+    if data:
+        avg = np.mean(data)
+        max_val = np.max(data)
+        p99 = np.percentile(data, 99)
+        return avg, max_val, p99
+    return None, None, None
 
-print("CPU Metrics: ")
-cpu_metrics = fetch_metric(cpu_query)
-if cpu_metrics:
-   for metric in cpu_metrics:
-      print("\nMetric Information:")
-      print(json.dumps(metric['metric'],indent=4))
-      print("values:")
-      print(f"  Timestamp: {metric['value'][0]}")
-      print(f"  CPU Usage: {metric['value'][1]}")
-else:
-    print("No CPU metrics data retrieved.")
+# Define PromQL queries for CPU and memory metrics
+cpu_query = 'rate(node_cpu_seconds_total[5m])'  # Adjust interval as needed
+memory_query = 'node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes'
 
-print("\nMemory Metrics")
-memory_total = fetch_metric(memory_total_query)
-memory_available = fetch_metric(memory_available_query)
+# Fetch CPU and memory data
+cpu_data = fetch_metric(cpu_query)
+memory_data = fetch_metric(memory_query)
 
-if memory_total and memory_available:
-    for total, available in zip(memory_total, memory_available):
-        print("\nNode:", total['metric']['node'])
-        print("Memory Total:", total['value'][1])
-        print("Memory Available:", available['value'][1])
-        used_memory = float(total['value'][1]) - float(available['value'][1])
-        print("Memory Used:", used_memory)
-else:
-    print("No memory metrics data retrieved.")
+# Calculate and display statistics
+cpu_avg, cpu_max, cpu_p99 = calculate_stats(cpu_data)
+memory_avg, memory_max, memory_p99 = calculate_stats(memory_data)
 
+print("CPU Usage (in cores):")
+print(f"  Average: {cpu_avg}")
+print(f"  Max: {cpu_max}")
+print(f"  P99: {cpu_p99}")
 
+print("\nMemory Usage (in bytes):")
+print(f"  Average: {memory_avg}")
+print(f"  Max: {memory_max}")
+print(f"  P99: {memory_p99}")
