@@ -1,6 +1,6 @@
 from kubernetes import client, config
-import time
 import numpy as np
+import time
 
 # Load the Kubernetes configuration
 config.load_kube_config()  # Use load_incluster_config() if running inside a pod
@@ -14,30 +14,36 @@ def get_node_metrics():
         group="metrics.k8s.io", version="v1beta1", plural="nodes"
     )
 
-    cpu_usages = []
-    memory_usages = []
+    node_metrics = {}
 
     for node in metrics['items']:
+        node_name = node['metadata']['name']
         cpu_usage = node['usage']['cpu']
         memory_usage = node['usage']['memory']
         
-        # Convert CPU to millicores (strip 'n' for nanocores if needed)
+        # Convert CPU to millicores
         if 'n' in cpu_usage:
-            cpu_usages.append(int(cpu_usage.replace('n', '')) / 1e6)  # Convert nanocores to millicores
+            cpu_usage_m = int(cpu_usage.replace('n', '')) / 1e6  # Convert nanocores to millicores
         elif 'm' in cpu_usage:
-            cpu_usages.append(int(cpu_usage.replace('m', '')))
+            cpu_usage_m = int(cpu_usage.replace('m', ''))
         else:
-            cpu_usages.append(int(cpu_usage) * 1000)  # Convert cores to millicores
+            cpu_usage_m = int(cpu_usage) * 1000  # Convert cores to millicores
 
-        # Convert memory to MiB (strip 'Ki', 'Mi', 'Gi' as appropriate)
+        # Convert memory to MiB
         if 'Ki' in memory_usage:
-            memory_usages.append(int(memory_usage.replace('Ki', '')) / 1024)  # KiB to MiB
+            memory_usage_mi = int(memory_usage.replace('Ki', '')) / 1024  # KiB to MiB
         elif 'Mi' in memory_usage:
-            memory_usages.append(int(memory_usage.replace('Mi', '')))
+            memory_usage_mi = int(memory_usage.replace('Mi', ''))
         elif 'Gi' in memory_usage:
-            memory_usages.append(int(memory_usage.replace('Gi', '')) * 1024)  # GiB to MiB
+            memory_usage_mi = int(memory_usage.replace('Gi', '')) * 1024  # GiB to MiB
 
-    return cpu_usages, memory_usages
+        # Add to node metrics dictionary
+        if node_name not in node_metrics:
+            node_metrics[node_name] = {'cpu': [], 'memory': []}
+        node_metrics[node_name]['cpu'].append(cpu_usage_m)
+        node_metrics[node_name]['memory'].append(memory_usage_mi)
+
+    return node_metrics
 
 def calculate_stats(data):
     if not data:
@@ -49,25 +55,27 @@ def calculate_stats(data):
 
     return {'average': average, 'max': max_val, 'p99': p99}
 
-def print_stats(cpu_usages, memory_usages):
-    cpu_stats = calculate_stats(cpu_usages)
-    memory_stats = calculate_stats(memory_usages)
-    
-    print("CPU Usage Stats (in millicores):")
-    print(f"  Average: {cpu_stats['average']} m")
-    print(f"  Max: {cpu_stats['max']} m")
-    print(f"  P99: {cpu_stats['p99']} m\n")
-    
-    print("Memory Usage Stats (in MiB):")
-    print(f"  Average: {memory_stats['average']} Mi")
-    print(f"  Max: {memory_stats['max']} Mi")
-    print(f"  P99: {memory_stats['p99']} Mi\n")
+def print_node_stats(node_metrics):
+    for node_name, metrics in node_metrics.items():
+        cpu_stats = calculate_stats(metrics['cpu'])
+        memory_stats = calculate_stats(metrics['memory'])
+        
+        print(f"\nNode: {node_name}")
+        print("  CPU Usage Stats (in millicores):")
+        print(f"    Average: {cpu_stats['average']} m")
+        print(f"    Max: {cpu_stats['max']} m")
+        print(f"    P99: {cpu_stats['p99']} m")
+        
+        print("  Memory Usage Stats (in MiB):")
+        print(f"    Average: {memory_stats['average']} Mi")
+        print(f"    Max: {memory_stats['max']} Mi")
+        print(f"    P99: {memory_stats['p99']} Mi")
 
 # Real-time monitoring with 10-second interval
 try:
     while True:
-        cpu_usages, memory_usages = get_node_metrics()
-        print_stats(cpu_usages, memory_usages)
-        time.sleep(2)  # Set the interval for fetching metrics
+        node_metrics = get_node_metrics()
+        print_node_stats(node_metrics)
+        time.sleep(10)  # Set the interval for fetching metrics
 except KeyboardInterrupt:
     print("Stopped monitoring.")
