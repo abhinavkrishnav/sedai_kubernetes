@@ -76,6 +76,6 @@ try:
     while True:
         node_metrics = get_node_metrics()
         print_node_stats(node_metrics)
-        time.sleep(10)  # Set the interval for fetching metrics
+        time.sleep(2)  # Set the interval for fetching metrics
 except KeyboardInterrupt:
     print("Stopped monitoring.")
